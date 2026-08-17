@@ -32,7 +32,7 @@ function writeLocal(){try{localStorage.setItem('wtd_short',JSON.stringify(short)
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));$(id).classList.add('on');scrollTo(0,0);if(id==='shorts')renderShort();if(id==='voting')renderVote()}
 function cap(s){return s?String(s).charAt(0).toUpperCase()+String(s).slice(1):''}
-function num(v){const n=Number(v);return Number.isFinite(n)?n:null}
+function num(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function setting(v){return v.indoor===true?'Indoor':v.indoor===false?'Outdoor':'Indoor & outdoor / check venue'}
 function people(v){const a=num(v.min_people)||1,b=num(v.max_people);return b?`${a}–${b} people`:`${a}+ people`}
 function duration(v){const a=num(v.duration_min_minutes),b=num(v.duration_max_minutes);if(!a&&!b)return'Check venue';if(a&&b&&a!==b)return`${a}–${b} min`;return`${a||b} min`}
