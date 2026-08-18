@@ -1,0 +1,31 @@
+name: Export venue management CSV
+
+on:
+  push:
+    paths:
+      - '.github/workflows/export-venue-csv.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download live venue CSV
+        run: |
+          curl -fsSL 'https://lmgypchhwuceiezvwoxt.supabase.co/functions/v1/export-venues-csv' -o what-to-do-dubai-venue-management.csv
+          test -s what-to-do-dubai-venue-management.csv
+      - name: Commit CSV
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add what-to-do-dubai-venue-management.csv
+          if git diff --cached --quiet; then
+            echo 'No CSV changes to commit.'
+          else
+            git commit -m 'Update venue management CSV'
+            git push
+          fi
