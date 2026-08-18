@@ -260,7 +260,7 @@ function renderShort(){
 function renderVote(){
   if(!short.length){show('shorts');return}
   $('voteList').innerHTML=short.map(v=>`<article class="venue"><div class="venue-body"><h3>${esc(v.name)}</h3><small>${esc(v.activityName||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${votes[v.id]||0} vote${(votes[v.id]||0)===1?'':'s'}</div><button class="btn" data-vote="${esc(v.id)}">Vote</button></div></article>`).join('');
-  document.querySelectorAll('[data-vote]').forEach(b=>b.onclick=()=>{votes[b.dataset.vote]=(votes[b.dataset_vote]||0)+1;writeLocal();renderVote()});
+  document.querySelectorAll('[data-vote]').forEach(b=>b.onclick=()=>{votes[b.dataset.vote]=(votes[b.dataset.vote]||0)+1;writeLocal();renderVote()});
 }
 function finishVote(){
   const ranked=short.slice().sort((a,b)=>(votes[b.id]||0)-(votes[a.id]||0));
