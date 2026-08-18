@@ -31,10 +31,10 @@
 
   <div class="modes">
     <button class="mode friends" data-mode="friends" type="button" aria-label="Explore with friends">
-      <img src="assets/friends-illustrated.svg" alt="Illustrated friends enjoying Dubai nightlife">
+      <img src="assets/friends-illustrated.svg?v=3" alt="Illustrated friends enjoying Dubai nightlife">
     </button>
     <button class="mode solo" data-mode="solo" type="button" aria-label="Explore solo">
-      <img src="assets/solo-illustrated.svg" alt="Illustrated solo traveler exploring Dubai">
+      <img src="assets/solo-illustrated.svg?v=4" alt="Illustrated solo traveler exploring Dubai">
     </button>
   </div>
   <div id="dataBadge" class="home-note">Loading Dubai activities…</div>
@@ -145,6 +145,145 @@
   <button class="nav-item" type="button"><span class="ico">•••</span><small>More</small></button>
 </nav>
 
-<script src="assets/app.js"></script>
+<script>
+const SB='https://lmgypchhwuceiezvwoxt.supabase.co';
+const KEY='sb_publishable_tD1_54t73nnatZp7uz4NSw_J4oVb516';
+let mode='friends',cat='All',activities=[],selectedActivity=null,venues=[],selectedVenue=null;
+let short=readLocal('wtd_short',[]),votes=readLocal('wtd_votes',{});
+const $=id=>document.getElementById(id);
+
+function readLocal(k,fallback){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(fallback))}catch(e){return fallback}}
+function writeLocal(){try{localStorage.setItem('wtd_short',JSON.stringify(short));localStorage.setItem('wtd_votes',JSON.stringify(votes))}catch(e){}}
+function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function setNav(id){
+  const idx=id==='home'?0:id==='acts'||id==='venues'||id==='details'?1:id==='shorts'||id==='voting'||id==='win'?3:0;
+  document.querySelectorAll('.nav-item').forEach((x,i)=>x.classList.toggle('active',i===idx));
+}
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  $(id).classList.add('on');setNav(id);scrollTo(0,0);
+  if(id==='shorts')renderShort();if(id==='voting')renderVote();
+}
+function cap(s){return s?String(s).charAt(0).toUpperCase()+String(s).slice(1):''}
+function num(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
+function setting(v){return v.indoor===true?'Indoor':v.indoor===false?'Outdoor':'Indoor & outdoor / check venue'}
+function people(v){const a=num(v.min_people)||1,b=num(v.max_people);return b?`${a}–${b} people`:`${a}+ people`}
+function duration(v){const a=num(v.duration_min_minutes),b=num(v.duration_max_minutes);if(!a&&!b)return'Check venue';if(a&&b&&a!==b)return`${a}–${b} min`;return`${a||b} min`}
+function rawPrice(v){const a=num(v.price_min_aed),b=num(v.price_max_aed);if(a===0&&b===0)return'Free';if(a!==null&&b!==null&&a!==b)return`AED ${a}–${b}`;if(a!==null)return`AED ${a}${b===null?'+':''}`;if(b!==null)return`Up to AED ${b}`;return'Check current price'}
+function displayPrice(v){const a=num(v.cost_per_person_min_aed),b=num(v.cost_per_person_max_aed);if(a===0&&b===0)return'Free';if(a!==null&&b!==null&&a!==b)return`AED ${a}–${b} / person`;if(a!==null)return`AED ${a}${b===null?'+':''} / person`;return rawPrice(v)}
+function priceScore(v){const pp=num(v.cost_per_person_min_aed);if(pp!==null)return pp;const raw=num(v.price_min_aed);return raw!==null?raw:999999}
+async function api(path){const r=await fetch(SB+'/rest/v1/'+path,{headers:{apikey:KEY}});if(!r.ok)throw new Error('Supabase '+r.status);return r.json()}
+
+async function init(){
+  try{
+    activities=await api('activities?select=id,slug,name,emoji,category,solo_friendly,group_friendly,sort_order&active=eq.true&order=sort_order.asc');
+    $('dataBadge').textContent=`${activities.length} activities waiting for you in Dubai`;
+    renderActs();
+  }catch(e){
+    $('dataBadge').textContent='Could not load live activities — refresh to try again';
+    $('cards').innerHTML='<div class="empty" style="grid-column:1/-1">Couldn’t load the activity database.</div>';
+  }
+}
+function renderActs(){
+  const cats=['All','Active','Games','Chill','Explore'];
+  $('tabs').innerHTML=cats.map(c=>`<button class="f ${c===cat?'on':''}" data-c="${c}">${c}</button>`).join('');
+  document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;renderActs()});
+  const list=activities.filter(a=>(mode==='solo'?a.solo_friendly!==false:a.group_friendly!==false)&&(cat==='All'||cap(a.category)===cat));
+  $('cards').innerHTML=list.map(a=>`<button class="card" data-a="${esc(a.id)}"><span>${esc(a.emoji||'✨')}</span><b>${esc(a.name)}</b><small>${esc(cap(a.category))}</small></button>`).join('');
+  document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>pickAct(activities.find(a=>a.id===b.dataset.a)));
+}
+async function pickAct(a){
+  selectedActivity=a;
+  $('vt').textContent=a.name+' in Dubai';
+  $('vs').textContent='Loading researched listings…';
+  $('vlist').innerHTML='<div class="empty loading">Loading places…</div>';
+  $('vcount').textContent='';show('venues');
+  try{
+    const fields='id,activity_id,name,area,address,price_min_aed,price_max_aed,price_note,pricing_basis,cost_per_person_min_aed,cost_per_person_max_aed,indoor,min_people,max_people,duration_min_minutes,duration_max_minutes,website_url,booking_url,maps_url,description,verified,source_url,last_verified_at,image_url,image_source_url,image_credit,image_rights_status,image_notes';
+    venues=await api(`venues?select=${fields}&activity_id=eq.${encodeURIComponent(a.id)}&active=eq.true`);
+    populateAreas();
+    $('vs').textContent=venues.length?`${venues.length} researched option${venues.length===1?'':'s'} found.`:'No researched listings yet.';
+    renderPlaces();
+  }catch(e){
+    venues=[];$('vs').textContent='Could not load listings.';
+    $('vlist').innerHTML='<div class="empty">Couldn’t load live listings. Please refresh and try again.</div>';
+  }
+}
+function populateAreas(){
+  const areas=[...new Set(venues.map(v=>v.area).filter(Boolean))].sort();
+  $('area').innerHTML='<option value="all">All areas</option>'+areas.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+}
+function renderPlaces(){
+  let list=venues.slice();const av=$('area').value;
+  if(av!=='all')list=list.filter(v=>v.area===av);
+  if($('sort').value==='name')list.sort((a,b)=>a.name.localeCompare(b.name));else list.sort((a,b)=>priceScore(a)-priceScore(b));
+  $('vcount').textContent=`Showing ${list.length} of ${venues.length}`;
+  if(!list.length){$('vlist').innerHTML='<div class="empty">No places match this filter.</div>';return}
+  $('vlist').innerHTML=list.map(v=>`<article class="venue">
+    ${v.image_url?`<img class="venue-img" src="${esc(v.image_url)}" alt="${esc(v.name)}" loading="lazy" onerror="this.style.display='none'">`:''}
+    <div class="venue-body">
+      <h3>${esc(v.name)} ${v.verified?'<span class="verified">✓ researched</span>':''}</h3>
+      <small>⌖ ${esc(v.area||'Dubai')} · ${esc(setting(v))}</small>
+      <div class="price">${esc(displayPrice(v))}</div>
+      ${v.pricing_basis?`<div class="basis">${esc(v.pricing_basis)}</div>`:''}
+      <button class="btn" data-p="${esc(v.id)}">View place</button>
+    </div>
+  </article>`).join('');
+  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>openPlace(venues.find(v=>v.id===b.dataset.p)));
+}
+function openPlace(v){
+  if(!v)return;selectedVenue=v;const di=$('dimg');
+  if(v.image_url){di.src=v.image_url;di.style.display='block'}else{di.removeAttribute('src');di.style.display='none'}
+  $('dk').textContent=selectedActivity?.name||'Dubai activity';
+  $('dn').textContent=v.name;
+  $('da').textContent=v.address||((v.area||'Dubai')+', Dubai');
+  $('dp').textContent=displayPrice(v);$('dbasis').textContent=v.pricing_basis||'';
+  $('dl').textContent=rawPrice(v);$('ds').textContent=setting(v);$('dpeople').textContent=people(v);$('ddur').textContent=duration(v);
+  $('ddesc').textContent=v.description||'';$('dnote').textContent=v.price_note||'';
+  $('map').href=v.maps_url||'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(v.name+', '+(v.area||'Dubai')+', Dubai');
+  const book=v.booking_url||v.website_url;$('book').style.display=book?'block':'none';if(book)$('book').href=book;
+  $('source').style.display=v.source_url?'block':'none';if(v.source_url)$('source').href=v.source_url;
+  $('add').textContent=short.some(x=>x.id===v.id)?'✓ Added to Shortlist':'+ Add to Shortlist';
+  $('short').style.display=short.length?'block':'none';show('details');
+}
+function addSelected(){
+  if(!selectedVenue)return;
+  if(!short.some(x=>x.id===selectedVenue.id)){short.push({...selectedVenue,activityName:selectedActivity?.name||'Activity'});writeLocal()}
+  openPlace(selectedVenue);
+}
+function renderShort(){
+  if(!short.length){$('slist').innerHTML='<div class="empty">Nothing shortlisted yet.</div>';$('votebtn').style.display='none';return}
+  $('votebtn').style.display='block';
+  $('slist').innerHTML=short.map((v,i)=>`<article class="venue"><div class="venue-body"><h3>${esc(v.name)}</h3><small>${esc(v.activityName||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${esc(displayPrice(v))}</div><button class="btn dark" data-r="${i}">Remove</button></div></article>`).join('');
+  document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{const item=short[Number(b.dataset.r)];if(item)delete votes[item.id];short.splice(Number(b.dataset.r),1);writeLocal();renderShort()});
+}
+function renderVote(){
+  if(!short.length){show('shorts');return}
+  $('voteList').innerHTML=short.map(v=>`<article class="venue"><div class="venue-body"><h3>${esc(v.name)}</h3><small>${esc(v.activityName||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${votes[v.id]||0} vote${(votes[v.id]||0)===1?'':'s'}</div><button class="btn" data-vote="${esc(v.id)}">Vote</button></div></article>`).join('');
+  document.querySelectorAll('[data-vote]').forEach(b=>b.onclick=()=>{votes[b.dataset.vote]=(votes[b.dataset_vote]||0)+1;writeLocal();renderVote()});
+}
+function finishVote(){
+  const ranked=short.slice().sort((a,b)=>(votes[b.id]||0)-(votes[a.id]||0));
+  if(!ranked.length||!(votes[ranked[0].id]>0))return alert('Add at least one vote first.');
+  const max=votes[ranked[0].id]||0,tied=ranked.filter(v=>(votes[v.id]||0)===max),w=tied[Math.floor(Math.random()*tied.length)];
+  $('wcard').innerHTML=`<h2>${esc(w.name)}</h2><p>${esc(w.activityName||'Activity')} · ${esc(w.area||'Dubai')}</p><div class="price">${esc(displayPrice(w))}</div><div class="basis">${tied.length>1?'Tie broken randomly · ':''}${max} vote${max===1?'':'s'}</div>`;
+  show('win');
+}
+
+document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>{
+  mode=b.dataset.mode;
+  renderActs();
+  show('acts');
+});
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
+$('add').onclick=addSelected;
+$('short').onclick=()=>show('shorts');
+$('votebtn').onclick=()=>show('voting');
+$('finish').onclick=finishVote;
+$('resetVotes').onclick=()=>{votes={};writeLocal();renderVote()};
+$('sort').onchange=renderPlaces;
+$('area').onchange=renderPlaces;
+init();
+</script>
 </body>
 </html>
