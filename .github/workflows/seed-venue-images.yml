@@ -1,0 +1,16 @@
+name: Seed venue category images
+
+on:
+  push:
+    paths:
+      - '.github/workflows/seed-venue-images.yml'
+  workflow_dispatch:
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Seed Supabase venue images
+        run: |
+          curl -fsSL 'https://lmgypchhwuceiezvwoxt.supabase.co/functions/v1/seed-venue-images' -o seed-result.json
+          cat seed-result.json
