@@ -1,0 +1,44 @@
+name: Patch venue images into UI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-venue-images-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch index.html
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace('.venue{padding:14px;margin:10px 0}', '.venue{padding:0 0 14px;margin:10px 0;overflow:hidden}.venue-body{padding:14px 14px 0}.venue-img{width:100%;height:180px;object-fit:cover;display:block;background:#202020}.detail-img{width:100%;height:230px;object-fit:cover;border-radius:14px;margin-bottom:14px;background:#202020}')
+          s=s.replace('<div class="detail"><div class="k" id="dk"></div>', '<div class="detail"><img id="dimg" class="detail-img" alt="Venue image" onerror="this.style.display=\'none\'"><div class="k" id="dk"></div>')
+          s=s.replace("website_url,booking_url,maps_url,description,verified,source_url,last_verified_at", "website_url,booking_url,maps_url,description,verified,source_url,last_verified_at,image_url,image_source_url,image_credit,image_rights_status,image_notes")
+          old="`<div class=\"venue\"><h3>${esc(v.name)} ${v.verified?'<span class=\"verified\">✓ researched</span>':''}</h3><small>📍 ${esc(v.area||'Dubai')} · ${esc(setting(v))}</small><div class=\"price\">${esc(displayPrice(v))}</div>${v.pricing_basis?`<div class=\"basis\">${esc(v.pricing_basis)}</div>`:''}<button class=\"btn\" data-p=\"${esc(v.id)}\">View place</button></div>`"
+          new="`<div class=\"venue\">${v.image_url?`<img class=\"venue-img\" src=\"${esc(v.image_url)}\" alt=\"${esc(v.name)}\" loading=\"lazy\" onerror=\"this.style.display='none'\">`:''}<div class=\"venue-body\"><h3>${esc(v.name)} ${v.verified?'<span class=\"verified\">✓ researched</span>':''}</h3><small>📍 ${esc(v.area||'Dubai')} · ${esc(setting(v))}</small><div class=\"price\">${esc(displayPrice(v))}</div>${v.pricing_basis?`<div class=\"basis\">${esc(v.pricing_basis)}</div>`:''}<button class=\"btn\" data-p=\"${esc(v.id)}\">View place</button></div></div>`"
+          if old not in s:
+              raise SystemExit('renderPlaces template not found')
+          s=s.replace(old,new)
+          anchor="selectedVenue=v;$('dk').textContent=selectedActivity?.name||'Dubai activity';"
+          repl="selectedVenue=v;const di=$('dimg');if(v.image_url){di.src=v.image_url;di.style.display='block'}else{di.removeAttribute('src');di.style.display='none'};$('dk').textContent=selectedActivity?.name||'Dubai activity';"
+          if anchor not in s:
+              raise SystemExit('openPlace anchor not found')
+          s=s.replace(anchor,repl)
+          p.write_text(s)
+          PY
+      - name: Commit UI patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Show venue images in app' || exit 0
+          git push
