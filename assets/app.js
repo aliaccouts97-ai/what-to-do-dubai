@@ -1,21 +1,24 @@
 const SB='https://lmgypchhwuceiezvwoxt.supabase.co';
 const KEY='sb_publishable_tD1_54t73nnatZp7uz4NSw_J4oVb516';
-let mode='friends',cat='All',activities=[],selectedActivity=null,venues=[],selectedVenue=null;
-let short=readLocal('wtd_short',[]),votes=readLocal('wtd_votes',{});
+const VF='id,activity_id,name,area,address,price_min_aed,price_max_aed,price_note,pricing_basis,cost_per_person_min_aed,cost_per_person_max_aed,indoor,min_people,max_people,duration_min_minutes,duration_max_minutes,website_url,booking_url,maps_url,description,verified,source_url,last_verified_at,image_url,image_source_url,image_credit,image_rights_status,image_notes';
+let mode='friends',cat='All',activities=[],selectedActivity=null,venues=[],selectedVenue=null,decisionVenues=null,currentNav=0;
+let short=readLocal('wtd_short',[]),votes=readLocal('wtd_votes',{}),favorites=readLocal('wtd_favorites',[]);
 const $=id=>document.getElementById(id);
-
-function readLocal(k,fallback){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(fallback))}catch(e){return fallback}}
-function writeLocal(){try{localStorage.setItem('wtd_short',JSON.stringify(short));localStorage.setItem('wtd_votes',JSON.stringify(votes))}catch(e){}}
+const demoDeals=[
+ {activity:'Padel',icon:'🎾',title:'Off-peak Padel',deal:'Example: 20% off selected off-peak sessions.'},
+ {activity:'Bowling',icon:'🎳',title:'Bowling night',deal:'Example: 2-for-1 game offer.'},
+ {activity:'Board Game Cafés',icon:'🎲',title:'Board-game café',deal:'Example: free second hour of gaming.'},
+ {activity:'Kayaking',icon:'🛶',title:'Morning kayaking',deal:'Example: 15% off selected morning sessions.'},
+ {activity:'Cinema',icon:'🎬',title:'Weekday cinema',deal:'Example: ticket + snack combo offer.'}
+];
+const tonightIdeas=[
+ {activity:'Walking',icon:'🌙',title:'Dubai Marina Walk after sunset',text:'Easy, free and perfect for a relaxed Dubai evening.'},
+ {activity:'Board Game Cafés',icon:'🎲',title:'Board-game café night',text:'Grab a table, choose a game and stay as long as you like.'},
+ {activity:'Cinema',icon:'🎬',title:'Late movie in Dubai',text:'Simple fallback when you want something easy and indoors.'}
+];
+function readLocal(k,f){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch(e){return f}}
+function save(){try{localStorage.setItem('wtd_short',JSON.stringify(short));localStorage.setItem('wtd_votes',JSON.stringify(votes));localStorage.setItem('wtd_favorites',JSON.stringify(favorites))}catch(e){}}
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function setNav(id){
-  const idx=id==='home'?0:id==='acts'||id==='venues'||id==='details'?1:id==='shorts'||id==='voting'||id==='win'?3:0;
-  document.querySelectorAll('.nav-item').forEach((x,i)=>x.classList.toggle('active',i===idx));
-}
-function show(id){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
-  $(id).classList.add('on');setNav(id);scrollTo(0,0);
-  if(id==='shorts')renderShort();if(id==='voting')renderVote();
-}
 function cap(s){return s?String(s).charAt(0).toUpperCase()+String(s).slice(1):''}
 function num(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function setting(v){return v.indoor===true?'Indoor':v.indoor===false?'Outdoor':'Indoor & outdoor / check venue'}
@@ -23,116 +26,34 @@ function people(v){const a=num(v.min_people)||1,b=num(v.max_people);return b?`${
 function duration(v){const a=num(v.duration_min_minutes),b=num(v.duration_max_minutes);if(!a&&!b)return'Check venue';if(a&&b&&a!==b)return`${a}–${b} min`;return`${a||b} min`}
 function rawPrice(v){const a=num(v.price_min_aed),b=num(v.price_max_aed);if(a===0&&b===0)return'Free';if(a!==null&&b!==null&&a!==b)return`AED ${a}–${b}`;if(a!==null)return`AED ${a}${b===null?'+':''}`;if(b!==null)return`Up to AED ${b}`;return'Check current price'}
 function displayPrice(v){const a=num(v.cost_per_person_min_aed),b=num(v.cost_per_person_max_aed);if(a===0&&b===0)return'Free';if(a!==null&&b!==null&&a!==b)return`AED ${a}–${b} / person`;if(a!==null)return`AED ${a}${b===null?'+':''} / person`;return rawPrice(v)}
-function priceScore(v){const pp=num(v.cost_per_person_min_aed);if(pp!==null)return pp;const raw=num(v.price_min_aed);return raw!==null?raw:999999}
+function priceScore(v){const p=num(v.cost_per_person_min_aed);return p!==null?p:(num(v.price_min_aed)??999999)}
 async function api(path){const r=await fetch(SB+'/rest/v1/'+path,{headers:{apikey:KEY}});if(!r.ok)throw new Error('Supabase '+r.status);return r.json()}
-
-async function init(){
-  try{
-    activities=await api('activities?select=id,slug,name,emoji,category,solo_friendly,group_friendly,sort_order&active=eq.true&order=sort_order.asc');
-    $('dataBadge').textContent=`${activities.length} activities waiting for you in Dubai`;
-    renderActs();
-  }catch(e){
-    $('dataBadge').textContent='Could not load live activities — refresh to try again';
-    $('cards').innerHTML='<div class="empty" style="grid-column:1/-1">Couldn’t load the activity database.</div>';
-  }
-}
-function renderActs(){
-  const cats=['All','Active','Games','Chill','Explore'];
-  $('tabs').innerHTML=cats.map(c=>`<button class="f ${c===cat?'on':''}" data-c="${c}">${c}</button>`).join('');
-  document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;renderActs()});
-  const list=activities.filter(a=>(mode==='solo'?a.solo_friendly!==false:a.group_friendly!==false)&&(cat==='All'||cap(a.category)===cat));
-  $('cards').innerHTML=list.map(a=>`<button class="card" data-a="${esc(a.id)}"><span>${esc(a.emoji||'✨')}</span><b>${esc(a.name)}</b><small>${esc(cap(a.category))}</small></button>`).join('');
-  document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>pickAct(activities.find(a=>a.id===b.dataset.a)));
-}
-async function pickAct(a){
-  selectedActivity=a;
-  $('vt').textContent=a.name+' in Dubai';
-  $('vs').textContent='Loading researched listings…';
-  $('vlist').innerHTML='<div class="empty loading">Loading places…</div>';
-  $('vcount').textContent='';show('venues');
-  try{
-    const fields='id,activity_id,name,area,address,price_min_aed,price_max_aed,price_note,pricing_basis,cost_per_person_min_aed,cost_per_person_max_aed,indoor,min_people,max_people,duration_min_minutes,duration_max_minutes,website_url,booking_url,maps_url,description,verified,source_url,last_verified_at,image_url,image_source_url,image_credit,image_rights_status,image_notes';
-    venues=await api(`venues?select=${fields}&activity_id=eq.${encodeURIComponent(a.id)}&active=eq.true`);
-    populateAreas();
-    $('vs').textContent=venues.length?`${venues.length} researched option${venues.length===1?'':'s'} found.`:'No researched listings yet.';
-    renderPlaces();
-  }catch(e){
-    venues=[];$('vs').textContent='Could not load listings.';
-    $('vlist').innerHTML='<div class="empty">Couldn’t load live listings. Please refresh and try again.</div>';
-  }
-}
-function populateAreas(){
-  const areas=[...new Set(venues.map(v=>v.area).filter(Boolean))].sort();
-  $('area').innerHTML='<option value="all">All areas</option>'+areas.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
-}
-function renderPlaces(){
-  let list=venues.slice();const av=$('area').value;
-  if(av!=='all')list=list.filter(v=>v.area===av);
-  if($('sort').value==='name')list.sort((a,b)=>a.name.localeCompare(b.name));else list.sort((a,b)=>priceScore(a)-priceScore(b));
-  $('vcount').textContent=`Showing ${list.length} of ${venues.length}`;
-  if(!list.length){$('vlist').innerHTML='<div class="empty">No places match this filter.</div>';return}
-  $('vlist').innerHTML=list.map(v=>`<article class="venue">
-    ${v.image_url?`<img class="venue-img" src="${esc(v.image_url)}" alt="${esc(v.name)}" loading="lazy" onerror="this.style.display='none'">`:''}
-    <div class="venue-body">
-      <h3>${esc(v.name)} ${v.verified?'<span class="verified">✓ researched</span>':''}</h3>
-      <small>⌖ ${esc(v.area||'Dubai')} · ${esc(setting(v))}</small>
-      <div class="price">${esc(displayPrice(v))}</div>
-      ${v.pricing_basis?`<div class="basis">${esc(v.pricing_basis)}</div>`:''}
-      <button class="btn" data-p="${esc(v.id)}">View place</button>
-    </div>
-  </article>`).join('');
-  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>openPlace(venues.find(v=>v.id===b.dataset.p)));
-}
-function openPlace(v){
-  if(!v)return;selectedVenue=v;const di=$('dimg');
-  if(v.image_url){di.src=v.image_url;di.style.display='block'}else{di.removeAttribute('src');di.style.display='none'}
-  $('dk').textContent=selectedActivity?.name||'Dubai activity';
-  $('dn').textContent=v.name;
-  $('da').textContent=v.address||((v.area||'Dubai')+', Dubai');
-  $('dp').textContent=displayPrice(v);$('dbasis').textContent=v.pricing_basis||'';
-  $('dl').textContent=rawPrice(v);$('ds').textContent=setting(v);$('dpeople').textContent=people(v);$('ddur').textContent=duration(v);
-  $('ddesc').textContent=v.description||'';$('dnote').textContent=v.price_note||'';
-  $('map').href=v.maps_url||'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(v.name+', '+(v.area||'Dubai')+', Dubai');
-  const book=v.booking_url||v.website_url;$('book').style.display=book?'block':'none';if(book)$('book').href=book;
-  $('source').style.display=v.source_url?'block':'none';if(v.source_url)$('source').href=v.source_url;
-  $('add').textContent=short.some(x=>x.id===v.id)?'✓ Added to Shortlist':'+ Add to Shortlist';
-  $('short').style.display=short.length?'block':'none';show('details');
-}
-function addSelected(){
-  if(!selectedVenue)return;
-  if(!short.some(x=>x.id===selectedVenue.id)){short.push({...selectedVenue,activityName:selectedActivity?.name||'Activity'});writeLocal()}
-  openPlace(selectedVenue);
-}
-function renderShort(){
-  if(!short.length){$('slist').innerHTML='<div class="empty">Nothing shortlisted yet.</div>';$('votebtn').style.display='none';return}
-  $('votebtn').style.display='block';
-  $('slist').innerHTML=short.map((v,i)=>`<article class="venue"><div class="venue-body"><h3>${esc(v.name)}</h3><small>${esc(v.activityName||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${esc(displayPrice(v))}</div><button class="btn dark" data-r="${i}">Remove</button></div></article>`).join('');
-  document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{const item=short[Number(b.dataset.r)];if(item)delete votes[item.id];short.splice(Number(b.dataset.r),1);writeLocal();renderShort()});
-}
-function renderVote(){
-  if(!short.length){show('shorts');return}
-  $('voteList').innerHTML=short.map(v=>`<article class="venue"><div class="venue-body"><h3>${esc(v.name)}</h3><small>${esc(v.activityName||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${votes[v.id]||0} vote${(votes[v.id]||0)===1?'':'s'}</div><button class="btn" data-vote="${esc(v.id)}">Vote</button></div></article>`).join('');
-  document.querySelectorAll('[data-vote]').forEach(b=>b.onclick=()=>{votes[b.dataset.vote]=(votes[b.dataset.vote]||0)+1;writeLocal();renderVote()});
-}
-function finishVote(){
-  const ranked=short.slice().sort((a,b)=>(votes[b.id]||0)-(votes[a.id]||0));
-  if(!ranked.length||!(votes[ranked[0].id]>0))return alert('Add at least one vote first.');
-  const max=votes[ranked[0].id]||0,tied=ranked.filter(v=>(votes[v.id]||0)===max),w=tied[Math.floor(Math.random()*tied.length)];
-  $('wcard').innerHTML=`<h2>${esc(w.name)}</h2><p>${esc(w.activityName||'Activity')} · ${esc(w.area||'Dubai')}</p><div class="price">${esc(displayPrice(w))}</div><div class="basis">${tied.length>1?'Tie broken randomly · ':''}${max} vote${max===1?'':'s'}</div>`;
-  show('win');
-}
-
-document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>{
-  mode=b.dataset.mode;
-  renderActs();
-  show('acts');
-});
-document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
-$('add').onclick=addSelected;
-$('short').onclick=()=>show('shorts');
-$('votebtn').onclick=()=>show('voting');
-$('finish').onclick=finishVote;
-$('resetVotes').onclick=()=>{votes={};writeLocal();renderVote()};
-$('sort').onchange=renderPlaces;
-$('area').onchange=renderPlaces;
+function setNav(i=currentNav){currentNav=i;document.querySelectorAll('.nav-item').forEach((x,n)=>x.classList.toggle('active',n===i))}
+function show(id,i=null){if(i!==null)setNav(i);else setNav();document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));$(id)?.classList.add('on');scrollTo(0,0);if(id==='shorts')renderShort();if(id==='voting')renderVote();if(id==='deals')renderDeals();if(id==='favorites')renderFavorites();if(id==='tonight')renderTonight()}
+function findActivity(name){return activities.find(a=>a.name.toLowerCase()===String(name).toLowerCase())||activities.find(a=>a.name.toLowerCase().includes(String(name).toLowerCase()))}
+function findActivityById(id){return activities.find(a=>a.id===id)}
+function isFav(type,id){return favorites.some(f=>f.type===type&&f.id===id)}
+function toggleFavoriteActivity(a){if(!a)return;const i=favorites.findIndex(f=>f.type==='activity'&&f.id===a.id);i>=0?favorites.splice(i,1):favorites.push({type:'activity',...a});save();renderActs();if($('favorites')?.classList.contains('on'))renderFavorites()}
+function toggleFavoriteVenue(v){if(!v)return;const i=favorites.findIndex(f=>f.type==='venue'&&f.id===v.id);i>=0?favorites.splice(i,1):favorites.push({type:'venue',...v,activityName:selectedActivity?.name||findActivityById(v.activity_id)?.name||'Activity'});save();updateDetailFavorite();if($('venues')?.classList.contains('on'))renderPlaces();if($('favorites')?.classList.contains('on'))renderFavorites()}
+function updateDetailFavorite(){if(selectedVenue&&$('favSelected'))$('favSelected').textContent=isFav('venue',selectedVenue.id)?'♥ Saved to Favorites':'♡ Save to Favorites'}
+async function init(){try{activities=await api('activities?select=id,slug,name,emoji,category,solo_friendly,group_friendly,sort_order&active=eq.true&order=sort_order.asc');$('dataBadge').textContent=`${activities.length} activities waiting for you in Dubai`;renderActs();renderDeals();renderTonight()}catch(e){$('dataBadge').textContent='Could not load live activities — refresh to try again';$('cards').innerHTML='<div class="empty" style="grid-column:1/-1">Couldn’t load the activity database.</div>'}}
+function renderActs(){const cats=['All','Active','Games','Chill','Explore'];$('tabs').innerHTML=cats.map(c=>`<button class="f ${c===cat?'on':''}" data-c="${c}">${c}</button>`).join('');document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;renderActs()});const list=activities.filter(a=>(mode==='solo'?a.solo_friendly!==false:a.group_friendly!==false)&&(cat==='All'||cap(a.category)===cat));$('cards').innerHTML=list.map(a=>`<button class="card" data-a="${esc(a.id)}"><span class="activity-emoji">${esc(a.emoji||'✨')}</span><span class="fav-heart ${isFav('activity',a.id)?'saved':''}" role="button" data-fav-act="${esc(a.id)}">${isFav('activity',a.id)?'♥':'♡'}</span><b>${esc(a.name)}</b><small>${esc(cap(a.category))}</small></button>`).join('');document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>pickAct(activities.find(a=>a.id===b.dataset.a)));document.querySelectorAll('[data-fav-act]').forEach(h=>h.onclick=e=>{e.stopPropagation();toggleFavoriteActivity(activities.find(a=>a.id===h.dataset.favAct))})}
+async function pickAct(a){if(!a)return;selectedActivity=a;$('vt').textContent=a.name+' in Dubai';$('vs').textContent='Loading researched listings…';$('vlist').innerHTML='<div class="empty loading">Loading places…</div>';$('vcount').textContent='';show('venues');try{venues=await api(`venues?select=${VF}&activity_id=eq.${encodeURIComponent(a.id)}&active=eq.true`);populateAreas();$('vs').textContent=venues.length?`${venues.length} researched option${venues.length===1?'':'s'} found.`:'No researched listings yet.';renderPlaces()}catch(e){venues=[];$('vs').textContent='Could not load listings.';$('vlist').innerHTML='<div class="empty">Couldn’t load live listings. Please refresh and try again.</div>'}}
+function populateAreas(){const areas=[...new Set(venues.map(v=>v.area).filter(Boolean))].sort();$('area').innerHTML='<option value="all">All areas</option>'+areas.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}
+function renderPlaces(){let list=venues.slice(),av=$('area').value;if(av!=='all')list=list.filter(v=>v.area===av);$('sort').value==='name'?list.sort((a,b)=>a.name.localeCompare(b.name)):list.sort((a,b)=>priceScore(a)-priceScore(b));$('vcount').textContent=`Showing ${list.length} of ${venues.length}`;if(!list.length){$('vlist').innerHTML='<div class="empty">No places match this filter.</div>';return}$('vlist').innerHTML=list.map(v=>`<article class="venue venue-fav-wrap">${v.image_url?`<img class="venue-img" src="${esc(v.image_url)}" alt="${esc(v.name)}" loading="lazy" onerror="this.style.display='none'">`:''}<button class="venue-heart ${isFav('venue',v.id)?'saved':''}" data-fav-venue="${esc(v.id)}">${isFav('venue',v.id)?'♥':'♡'}</button><div class="venue-body"><h3>${esc(v.name)} ${v.verified?'<span class="verified">✓ researched</span>':''}</h3><small>⌖ ${esc(v.area||'Dubai')} · ${esc(setting(v))}</small><div class="price">${esc(displayPrice(v))}</div>${v.pricing_basis?`<div class="basis">${esc(v.pricing_basis)}</div>`:''}<button class="btn" data-p="${esc(v.id)}">View place</button></div></article>`).join('');document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>openPlace(venues.find(v=>v.id===b.dataset.p)));document.querySelectorAll('[data-fav-venue]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFavoriteVenue(venues.find(v=>v.id===b.dataset.favVenue))})}
+function openPlace(v){if(!v)return;selectedVenue=v;if(!selectedActivity||selectedActivity.id!==v.activity_id)selectedActivity=findActivityById(v.activity_id)||{id:v.activity_id,name:v.activityName||'Dubai activity'};const di=$('dimg');if(v.image_url){di.src=v.image_url;di.style.display='block'}else{di.removeAttribute('src');di.style.display='none'}$('dk').textContent=selectedActivity?.name||'Dubai activity';$('dn').textContent=v.name;$('da').textContent=v.address||((v.area||'Dubai')+', Dubai');$('dp').textContent=displayPrice(v);$('dbasis').textContent=v.pricing_basis||'';$('dl').textContent=rawPrice(v);$('ds').textContent=setting(v);$('dpeople').textContent=people(v);$('ddur').textContent=duration(v);$('ddesc').textContent=v.description||'';$('dnote').textContent=v.price_note||'';$('map').href=v.maps_url||'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(v.name+', '+(v.area||'Dubai')+', Dubai');const book=v.booking_url||v.website_url;$('book').style.display=book?'block':'none';if(book)$('book').href=book;$('source').style.display=v.source_url?'block':'none';if(v.source_url)$('source').href=v.source_url;$('add').textContent=short.some(x=>x.id===v.id)?'✓ Added to Shortlist':'+ Add to Shortlist';$('short').style.display=short.length?'block':'none';updateDetailFavorite();show('details')}
+function addSelected(){if(!selectedVenue)return;if(!short.some(x=>x.id===selectedVenue.id)){short.push({...selectedVenue,activityName:selectedActivity?.name||'Activity'});save()}openPlace(selectedVenue)}
+function renderShort(){if(!short.length){$('slist').innerHTML='<div class="empty">Nothing shortlisted yet.</div>';$('votebtn').style.display='none';return}$('votebtn').style.display='block';$('slist').innerHTML=short.map((v,i)=>`<article class="venue"><div class="venue-body"><h3>${esc(v.name)}</h3><small>${esc(v.activityName||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${esc(displayPrice(v))}</div><button class="btn dark" data-r="${i}">Remove</button></div></article>`).join('');document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{const item=short[+b.dataset.r];if(item)delete votes[item.id];short.splice(+b.dataset.r,1);save();renderShort()})}
+function renderVote(){if(!short.length){show('shorts');return}$('voteList').innerHTML=short.map(v=>`<article class="venue"><div class="venue-body"><h3>${esc(v.name)}</h3><small>${esc(v.activityName||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${votes[v.id]||0} vote${(votes[v.id]||0)===1?'':'s'}</div><button class="btn" data-vote="${esc(v.id)}">Vote</button></div></article>`).join('');document.querySelectorAll('[data-vote]').forEach(b=>b.onclick=()=>{votes[b.dataset.vote]=(votes[b.dataset.vote]||0)+1;save();renderVote()})}
+function finishVote(){const ranked=short.slice().sort((a,b)=>(votes[b.id]||0)-(votes[a.id]||0));if(!ranked.length||!(votes[ranked[0].id]>0))return alert('Add at least one vote first.');const max=votes[ranked[0].id]||0,tied=ranked.filter(v=>(votes[v.id]||0)===max),w=tied[Math.floor(Math.random()*tied.length)];$('wcard').innerHTML=`<h2>${esc(w.name)}</h2><p>${esc(w.activityName||'Activity')} · ${esc(w.area||'Dubai')}</p><div class="price">${esc(displayPrice(w))}</div><div class="basis">${tied.length>1?'Tie broken randomly · ':''}${max} vote${max===1?'':'s'}</div>`;show('win')}
+function renderDeals(){$('dealList').innerHTML=demoDeals.map(d=>`<article class="utility-card"><div class="utility-icon">${d.icon}</div><div><span class="mini-badge">DEMO DEAL</span><h3>${esc(d.title)}</h3><p>${esc(d.deal)}</p><button class="mini-btn" data-deal="${esc(d.activity)}">Explore ${esc(d.activity)}</button></div></article>`).join('');document.querySelectorAll('[data-deal]').forEach(b=>b.onclick=()=>{const a=findActivity(b.dataset.deal);if(a)pickAct(a)})}
+function renderTonight(){$('tonightList').innerHTML=tonightIdeas.map(t=>`<article class="utility-card"><div class="utility-icon">${t.icon}</div><div><h3>${esc(t.title)}</h3><p>${esc(t.text)}</p><button class="mini-btn" data-tonight="${esc(t.activity)}">See options</button></div></article>`).join('');document.querySelectorAll('[data-tonight]').forEach(b=>b.onclick=()=>{const a=findActivity(b.dataset.tonight);if(a)pickAct(a)})}
+function renderFavorites(){if(!favorites.length){$('favoriteList').innerHTML='<div class="empty favorites-empty"><div class="big-empty-heart">♡</div><b>No favs yet</b><p>Tap a heart on an activity or place and it will appear here.</p></div>';return}const acts=favorites.filter(f=>f.type==='activity'),vs=favorites.filter(f=>f.type==='venue');let h='';if(acts.length)h+=`<div class="subsection-title">Activities</div><div class="favorite-grid">${acts.map(a=>`<article class="favorite-activity"><span>${esc(a.emoji||'✨')}</span><div><b>${esc(a.name)}</b><small>${esc(cap(a.category))}</small></div><button data-open-fav-act="${esc(a.id)}">Open</button><button class="remove-fav" data-remove-fav="activity:${esc(a.id)}">♥</button></article>`).join('')}</div>`;if(vs.length)h+=`<div class="subsection-title">Places</div>${vs.map(v=>`<article class="venue">${v.image_url?`<img class="venue-img" src="${esc(v.image_url)}" alt="${esc(v.name)}" onerror="this.style.display='none'">`:''}<div class="venue-body"><h3>${esc(v.name)}</h3><small>${esc(v.activityName||findActivityById(v.activity_id)?.name||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${esc(displayPrice(v))}</div><div class="favorite-actions"><button class="mini-btn" data-open-fav-venue="${esc(v.id)}">View place</button><button class="mini-btn ghost-mini" data-remove-fav="venue:${esc(v.id)}">Remove ♥</button></div></div></article>`).join('')}`;$('favoriteList').innerHTML=h;document.querySelectorAll('[data-open-fav-act]').forEach(b=>b.onclick=()=>{const a=activities.find(x=>x.id===b.dataset.openFavAct)||favorites.find(x=>x.id===b.dataset.openFavAct);if(a)pickAct(a)});document.querySelectorAll('[data-open-fav-venue]').forEach(b=>b.onclick=()=>{const v=favorites.find(x=>x.type==='venue'&&x.id===b.dataset.openFavVenue);if(v)openPlace(v)});document.querySelectorAll('[data-remove-fav]').forEach(b=>b.onclick=()=>{const [t,id]=b.dataset.removeFav.split(':');favorites=favorites.filter(f=>!(f.type===t&&f.id===id));save();renderFavorites();renderActs()})}
+function decisionCost(v){const p=num(v.cost_per_person_min_aed);return p!==null?p:num(v.price_min_aed)}
+async function runDecision(){const btn=$('runDecide');btn.disabled=true;btn.textContent='Finding your options…';$('decideResults').innerHTML='<div class="empty loading">Checking the Dubai list…</div>';try{if(!decisionVenues)decisionVenues=await api(`venues?select=${VF}&active=eq.true`);const who=$('qWho').value,mood=$('qMood').value,budget=$('qBudget').value,sp=$('qSetting').value,tp=$('qTime').value,group=+$('qGroup').value||4;let c=decisionVenues.filter(v=>{const a=findActivityById(v.activity_id);if(!a)return false;if(who==='solo'&&a.solo_friendly===false)return false;if(who==='friends'&&a.group_friendly===false)return false;if(mood!=='any'&&String(a.category).toLowerCase()!==mood)return false;if(sp==='indoor'&&v.indoor!==true)return false;if(sp==='outdoor'&&v.indoor!==false)return false;if(who==='friends'){const mn=num(v.min_people),mx=num(v.max_people);if(mn!==null&&group<mn)return false;if(mx!==null&&group>mx)return false}if(tp!=='any'){const d=num(v.duration_min_minutes)||num(v.duration_max_minutes);if(d!==null&&d>+tp)return false}if(budget!=='any'){const cost=decisionCost(v);if(cost!==null){if(+budget===0&&cost>0)return false;if(+budget>0&&cost>+budget)return false}}return true});c=c.map(v=>({...v,_score:(v.verified?3:0)+(decisionCost(v)!==null?2:0)+Math.random()*2})).sort((a,b)=>b._score-a._score);const picks=[],seen=new Set();for(const v of c){if(!seen.has(v.activity_id)||picks.length>=2){picks.push(v);seen.add(v.activity_id)}if(picks.length===3)break}if(!picks.length){$('decideResults').innerHTML='<div class="empty"><b>No perfect match.</b><p>Try “Either”, “Any budget” or “Surprise me”.</p></div>';return}$('decideResults').innerHTML=`<div class="result-title">Your 3 picks</div>${picks.map((v,i)=>`<article class="venue decide-pick">${v.image_url?`<img class="venue-img" src="${esc(v.image_url)}" alt="${esc(v.name)}" onerror="this.style.display='none'">`:''}<div class="venue-body"><span class="mini-badge">PICK ${i+1}</span><h3>${esc(v.name)}</h3><small>${esc(findActivityById(v.activity_id)?.name||'Activity')} · ${esc(v.area||'Dubai')}</small><div class="price">${esc(displayPrice(v))}</div><button class="btn" data-decide-place="${esc(v.id)}">This one →</button></div></article>`).join('')}`;document.querySelectorAll('[data-decide-place]').forEach(b=>b.onclick=()=>{const v=picks.find(x=>x.id===b.dataset.decidePlace);if(v){selectedActivity=findActivityById(v.activity_id);openPlace(v)}})}catch(e){$('decideResults').innerHTML='<div class="empty">Couldn’t load the decision list. Try again.</div>'}finally{btn.disabled=false;btn.textContent='Give me 3 options ✦'}}
+document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;renderActs();show('acts',0)});
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>b.dataset.go==='home'?show('home',0):show(b.dataset.go));
+document.querySelectorAll('[data-nav]').forEach((b,i)=>b.onclick=()=>show(b.dataset.nav,i));
+const topHeart=document.querySelector('.heart-icon');if(topHeart)topHeart.onclick=()=>show('favorites',2);
+$('favSelected').onclick=()=>toggleFavoriteVenue(selectedVenue);$('add').onclick=addSelected;$('short').onclick=()=>show('shorts');$('votebtn').onclick=()=>show('voting');$('finish').onclick=finishVote;$('resetVotes').onclick=()=>{votes={};save();renderVote()};$('sort').onchange=renderPlaces;$('area').onchange=renderPlaces;$('runDecide').onclick=runDecision;$('qWho').onchange=()=>{$('groupSizeWrap').style.display=$('qWho').value==='friends'?'block':'none'};
 init();
