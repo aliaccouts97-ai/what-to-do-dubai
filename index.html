@@ -6,21 +6,42 @@
 <meta name="theme-color" content="#090910">
 <title>What to do? Dubai</title>
 <link rel="stylesheet" href="assets/app.css">
-<link rel="stylesheet" href="assets/features.css?v=1">
+<link rel="stylesheet" href="assets/features.css?v=2">
 </head>
 <body>
 <main class="app">
 <section id="home" class="screen on">
  <div class="top-home"><button class="menu-icon" type="button" aria-label="Menu">☰</button><div class="brand"><div class="what">WHAT TO DO</div><div class="dubai">DUBAI</div></div><button class="heart-icon" type="button" aria-label="Favorites">♡</button></div>
  <div class="hero-copy"><h1>In Dubai,<br><span>you can't be bored.</span></h1></div>
- <div class="explore-label">HOW WILL YOU EXPLORE?<div class="spark"><i></i></div></div>
- <div class="modes"><button class="mode friends" data-mode="friends" type="button"><img src="assets/friends-illustrated.svg?v=8" alt="With Friends"></button><button class="mode solo" data-mode="solo" type="button"><img src="assets/solo-illustrated.svg?v=8" alt="Solo Adventure"></button></div>
- <div id="dataBadge" class="home-note">Loading Dubai activities…</div>
+ <div class="explore-label">WHAT ARE YOU LOOKING FOR?<div class="spark"><i></i></div></div>
+ <div class="portal-grid">
+  <button class="portal-card activities-portal" data-portal="activities" type="button" aria-label="Explore activities">
+   <div class="portal-art activity-art"><span class="p1">🎾</span><span class="p2">🎳</span><span class="p3">🛶</span><span class="p4">🎯</span></div>
+   <div class="portal-copy"><small>DISCOVER</small><h3>ACTIVITIES</h3><p>Find something fun to do in Dubai.</p><b class="portal-arrow">→</b></div>
+  </button>
+  <button class="portal-card events-portal" data-portal="events" type="button" aria-label="Explore events">
+   <div class="portal-art event-art"><span class="spot s1"></span><span class="spot s2"></span><span class="stage-emoji">🎟️</span><span class="crowd">♬ ✦ ♬</span></div>
+   <div class="portal-copy"><small>WHAT'S ON</small><h3>EVENTS</h3><p>See what's happening across Dubai.</p><b class="portal-arrow">→</b></div>
+  </button>
+ </div>
+ <div id="dataBadge" class="home-note">Loading Dubai…</div>
 </section>
+
 <section id="acts" class="screen">
- <div class="inner-top"><button class="back" data-go="home">←</button><div class="inner-brand"><b>Dubai</b><small>Choose your vibe</small></div><div class="ghost"></div></div>
- <div class="k">Step 1</div><h2>What do you feel like doing?</h2><p>Pick an activity. We'll show you the best researched places next.</p><div id="tabs" class="filters"></div><div id="cards" class="grid"></div>
+ <div class="inner-top"><button class="back" data-go="home">←</button><div class="inner-brand"><b>Activities</b><small>Choose your vibe</small></div><div class="ghost"></div></div>
+ <div class="k">Activities</div><h2>What do you feel like doing?</h2><p>Pick who you're with, then choose an activity.</p>
+ <div class="audience-block"><span>WHO ARE YOU WITH?</span><div id="audienceFilters" class="filters audience-filters"></div></div>
+ <div id="tabs" class="filters"></div><div id="cards" class="grid"></div>
 </section>
+
+<section id="events" class="screen utility-screen">
+ <div class="inner-top"><button class="back" data-go="home">←</button><div class="inner-brand"><b>Events</b><small>What's happening in Dubai</small></div><div class="ghost"></div></div>
+ <div class="k">Events</div><h2>Plan your next Dubai night out.</h2><p>Parties, concerts, comedy, culture and more — sorted by date.</p>
+ <div class="event-filter-label">WHEN?</div><div id="eventDateFilters" class="filters event-filters"></div>
+ <div class="event-filter-label">TYPE</div><div id="eventTypeFilters" class="filters event-filters"></div>
+ <div id="eventCount" class="count"></div><div id="eventList" class="event-list"></div>
+</section>
+
 <section id="venues" class="screen">
  <div class="inner-top"><button class="back" data-go="acts">←</button><div class="inner-brand"><b>Dubai</b><small>Explore places</small></div><div class="ghost"></div></div>
  <div class="k">Step 2</div><h2 id="vt"></h2><p id="vs"></p><div class="toolbar"><select id="sort"><option value="price">Lowest price</option><option value="name">Name A–Z</option></select><select id="area"><option value="all">All areas</option></select></div><div id="vcount" class="count"></div><div id="vlist"></div>
@@ -36,6 +57,7 @@
  <div class="inner-top"><button class="back" data-go="shorts">←</button><div class="inner-brand"><b>Dubai</b><small>Group vote</small></div><div class="ghost"></div></div><div class="k">Step 4</div><h2>What are we doing?</h2><p>Tap vote for each person's choice.</p><div id="voteList"></div><button id="finish" class="btn">Finish vote</button><button id="resetVotes" class="btn dark">Reset votes</button>
 </section>
 <section id="win" class="screen winner"><div class="trophy">🏆</div><div class="k">Decision made</div><h2>That's the plan.</h2><div id="wcard" class="detail"></div><button class="btn" data-go="acts">Choose again</button></section>
+
 <section id="deals" class="screen utility-screen">
  <div class="inner-top"><button class="back" data-go="home">←</button><div class="inner-brand"><b>Deals</b><small>Example offers</small></div><div class="ghost"></div></div><div class="k">Deals</div><h2>A little more fun for less.</h2><p class="screen-note">These 5 are demo offers for the MVP. We’ll replace them with real partner deals once venues join.</p><div id="dealList" class="utility-list"></div>
 </section>
@@ -43,7 +65,7 @@
  <div class="inner-top"><button class="back" data-go="home">←</button><div class="inner-brand"><b>Favorites</b><small>Saved for later</small></div><div class="ghost"></div></div><div class="k">Favorites</div><h2>Your saved ideas.</h2><div id="favoriteList"></div>
 </section>
 <section id="tonight" class="screen utility-screen">
- <div class="inner-top"><button class="back" data-go="home">←</button><div class="inner-brand"><b>Tonight</b><small>Dubai ideas</small></div><div class="ghost"></div></div><div class="k">Tonight</div><h2>Three easy ideas for tonight.</h2><p class="screen-note">Examples from the app — always confirm current opening hours before heading out.</p><div id="tonightList" class="utility-list"></div>
+ <div class="inner-top"><button class="back" data-go="home">←</button><div class="inner-brand"><b>Tonight</b><small>Dubai ideas</small></div><div class="ghost"></div></div><div class="k">Tonight</div><h2>What can you do tonight?</h2><p class="screen-note" id="tonightNote">Checking tonight's events and activities.</p><div id="tonightList" class="utility-list"></div>
 </section>
 <section id="decide" class="screen utility-screen">
  <div class="inner-top"><button class="back" data-go="home">←</button><div class="inner-brand"><b>Decide</b><small>We narrow it down</small></div><div class="ghost"></div></div><div class="k">Decide for me</div><h2>Tell us what you’re in the mood for.</h2>
@@ -65,6 +87,6 @@
  <button class="nav-item" data-nav="tonight"><span class="ico">☾</span><small>Tonight</small></button>
  <button class="nav-item" data-nav="decide"><span class="ico">✦</span><small>Decide</small></button>
 </nav>
-<script src="assets/app.js?v=2"></script>
+<script src="assets/app.js?v=3"></script>
 </body>
 </html>
